@@ -1,0 +1,1770 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CPU Scheduling Simulator</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            background: #0b1020;
+            color: #f5f7ff;
+            min-height: 100vh;
+        }
+
+        .container {
+            width: 92%;
+            max-width: 1400px;
+            margin: auto;
+            padding: 30px 0 50px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 35px;
+        }
+
+        header h1 {
+            font-size: 42px;
+            margin-bottom: 10px;
+            letter-spacing: -1px;
+        }
+
+        header p {
+            color: #9ba7c0;
+            font-size: 16px;
+        }
+
+        .card {
+            background: #151c31;
+            border: 1px solid #26304a;
+            border-radius: 18px;
+            padding: 24px;
+            margin-bottom: 22px;
+            box-shadow: 0 12px 35px rgba(0,0,0,0.25);
+        }
+
+        .card h2 {
+            font-size: 21px;
+            margin-bottom: 18px;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: end;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+        }
+
+        .input-group label {
+            font-size: 13px;
+            color: #9ba7c0;
+        }
+
+        input,
+        select {
+            background: #0d1426;
+            color: white;
+            border: 1px solid #303b58;
+            border-radius: 9px;
+            padding: 11px 13px;
+            font-size: 14px;
+            outline: none;
+        }
+
+        input:focus,
+        select:focus {
+            border-color: #7187ff;
+        }
+
+        button {
+            border: none;
+            border-radius: 9px;
+            padding: 11px 17px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-1px);
+            opacity: 0.9;
+        }
+
+        .primary {
+            background: #6678ff;
+            color: white;
+        }
+
+        .secondary {
+            background: #26304a;
+            color: white;
+        }
+
+        .danger {
+            background: #8f3040;
+            color: white;
+        }
+
+        .success {
+            background: #28795c;
+            color: white;
+        }
+
+        .process-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .process-table th,
+        .process-table td {
+            padding: 13px 12px;
+            text-align: center;
+            border-bottom: 1px solid #26304a;
+        }
+
+        .process-table th {
+            color: #9ba7c0;
+            font-size: 13px;
+            text-transform: uppercase;
+        }
+
+        .process-table td {
+            font-size: 14px;
+        }
+
+        .delete-btn {
+            padding: 7px 11px;
+            background: #682b38;
+            font-size: 12px;
+        }
+
+        .settings {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 18px;
+            align-items: end;
+        }
+
+        .run-section {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        .gantt-wrapper {
+            overflow-x: auto;
+            padding-bottom: 10px;
+        }
+
+        .gantt {
+            display: flex;
+            align-items: stretch;
+            min-width: 600px;
+            margin-top: 25px;
+            height: 75px;
+        }
+
+        .gantt-block {
+            min-width: 45px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #6678ff;
+            border-right: 1px solid #0b1020;
+            position: relative;
+            font-weight: bold;
+            font-size: 13px;
+        }
+
+        .gantt-block.idle {
+            background: #3a4255;
+        }
+
+        .time-labels {
+            display: flex;
+            min-width: 600px;
+            margin-top: 8px;
+        }
+
+        .time-label {
+            font-size: 12px;
+            color: #9ba7c0;
+        }
+
+        .result-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .result-table th,
+        .result-table td {
+            padding: 12px;
+            border-bottom: 1px solid #26304a;
+            text-align: center;
+        }
+
+        .result-table th {
+            color: #9ba7c0;
+            font-size: 13px;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .summary-box {
+            background: #0d1426;
+            border: 1px solid #26304a;
+            border-radius: 12px;
+            padding: 18px;
+        }
+
+        .summary-box .label {
+            color: #9ba7c0;
+            font-size: 13px;
+            margin-bottom: 8px;
+        }
+
+        .summary-box .value {
+            font-size: 25px;
+            font-weight: bold;
+        }
+
+        .comparison {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .comparison th,
+        .comparison td {
+            padding: 14px;
+            border-bottom: 1px solid #26304a;
+            text-align: center;
+        }
+
+        .comparison th {
+            color: #9ba7c0;
+        }
+
+        .best {
+            background: #1d5a45;
+            border-radius: 6px;
+            font-weight: bold;
+        }
+
+        .algorithm-name {
+            font-weight: bold;
+        }
+
+        .status {
+            margin-top: 15px;
+            color: #9ba7c0;
+            font-size: 14px;
+        }
+
+        .empty {
+            text-align: center;
+            padding: 25px;
+            color: #69748d;
+        }
+
+        @media (max-width: 800px) {
+            header h1 {
+                font-size: 30px;
+            }
+
+            .summary-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .card {
+                padding: 18px;
+            }
+
+            .process-table {
+                min-width: 650px;
+            }
+
+            .table-wrapper {
+                overflow-x: auto;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <header>
+        <h1>CPU Scheduling Simulator</h1>
+        <p>Visualize and compare CPU scheduling algorithms</p>
+    </header>
+
+    <!-- PROCESS INPUT -->
+    <div class="card">
+        <h2>Process Configuration</h2>
+
+        <div class="controls">
+
+            <div class="input-group">
+                <label>Process ID</label>
+                <input type="text" id="pid" placeholder="P6">
+            </div>
+
+            <div class="input-group">
+                <label>Arrival Time</label>
+                <input type="number" id="arrival" min="0" placeholder="0">
+            </div>
+
+            <div class="input-group">
+                <label>Burst Time</label>
+                <input type="number" id="burst" min="1" placeholder="5">
+            </div>
+
+            <div class="input-group">
+                <label>Priority</label>
+                <input type="number" id="priority" min="1" placeholder="1">
+            </div>
+
+            <button class="primary" onclick="addProcess()">
+                + Add Process
+            </button>
+
+            <button class="secondary" onclick="loadDemo()">
+                Load Demo
+            </button>
+
+            <button class="danger" onclick="clearProcesses()">
+                Clear
+            </button>
+
+        </div>
+
+        <div class="table-wrapper" style="margin-top:25px; overflow-x:auto;">
+            <table class="process-table">
+                <thead>
+                    <tr>
+                        <th>PID</th>
+                        <th>Arrival Time</th>
+                        <th>Burst Time</th>
+                        <th>Priority</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+
+                <tbody id="processBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+
+    <!-- ALGORITHM SETTINGS -->
+    <div class="card">
+
+        <h2>Simulation Settings</h2>
+
+        <div class="settings">
+
+            <div class="input-group">
+                <label>Algorithm</label>
+
+                <select id="algorithm" onchange="toggleQuantum()">
+                    <option value="ALL">All Algorithms</option>
+                    <option value="FCFS">FCFS</option>
+                    <option value="SJF">SJF</option>
+                    <option value="RR">Round Robin</option>
+                    <option value="PRIORITY">Priority</option>
+                </select>
+            </div>
+
+            <div class="input-group" id="quantumGroup">
+                <label>Round Robin Quantum</label>
+                <input type="number" id="quantum" value="3" min="1">
+            </div>
+
+        </div>
+
+        <div class="run-section">
+
+            <button class="primary" onclick="runSimulation()">
+                ▶ Run Simulation
+            </button>
+
+            <button class="success" onclick="loadDemo(); runSimulation();">
+                ⚡ Run Demo
+            </button>
+
+        </div>
+
+        <div class="status" id="status">
+            Add processes and run the simulation.
+        </div>
+
+    </div>
+
+
+    <!-- GANTT CHART -->
+    <div class="card">
+
+        <h2>Gantt Chart</h2>
+
+        <div class="gantt-wrapper">
+
+            <div id="ganttContainer">
+                <div class="empty">
+                    Run a simulation to display the Gantt chart.
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- PROCESS RESULTS -->
+    <div class="card">
+
+        <h2>Process Results</h2>
+
+        <div class="table-wrapper" style="overflow-x:auto;">
+
+            <table class="result-table">
+
+                <thead>
+                    <tr>
+                        <th>PID</th>
+                        <th>AT</th>
+                        <th>BT</th>
+                        <th>Priority</th>
+                        <th>CT</th>
+                        <th>TAT</th>
+                        <th>WT</th>
+                        <th>RT</th>
+                    </tr>
+                </thead>
+
+                <tbody id="resultBody"></tbody>
+
+            </table>
+
+        </div>
+
+        <div class="summary-grid">
+
+            <div class="summary-box">
+                <div class="label">Average Waiting Time</div>
+                <div class="value" id="avgWT">-</div>
+            </div>
+
+            <div class="summary-box">
+                <div class="label">Average Turnaround Time</div>
+                <div class="value" id="avgTAT">-</div>
+            </div>
+
+            <div class="summary-box">
+                <div class="label">Average Response Time</div>
+                <div class="value" id="avgRT">-</div>
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- COMPARISON -->
+    <div class="card">
+
+        <h2>Algorithm Comparison</h2>
+
+        <div class="table-wrapper" style="overflow-x:auto;">
+
+            <table class="comparison">
+
+                <thead>
+                    <tr>
+                        <th>Algorithm</th>
+                        <th>Average WT</th>
+                        <th>Average TAT</th>
+                        <th>Average RT</th>
+                    </tr>
+                </thead>
+
+                <tbody id="comparisonBody">
+
+                    <tr>
+                        <td colspan="4" class="empty">
+                            Run "All Algorithms" to compare performance.
+                        </td>
+                    </tr>
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<script>
+
+let processes = [];
+
+let lastResults = [];
+
+
+// ------------------------------------------
+// ADD PROCESS
+// ------------------------------------------
+
+function addProcess() {
+
+    const pid = document.getElementById("pid").value.trim();
+
+    const arrival = Number(
+        document.getElementById("arrival").value
+    );
+
+    const burst = Number(
+        document.getElementById("burst").value
+    );
+
+    const priority = Number(
+        document.getElementById("priority").value
+    );
+
+
+    if (!pid || arrival < 0 || burst <= 0 || priority <= 0) {
+
+        alert("Please enter valid process details.");
+
+        return;
+    }
+
+
+    processes.push({
+        pid: pid,
+        arrival: arrival,
+        burst: burst,
+        priority: priority,
+        order: processes.length
+    });
+
+
+    renderProcesses();
+
+    clearInputs();
+}
+
+
+// ------------------------------------------
+// CLEAR INPUT BOXES
+// ------------------------------------------
+
+function clearInputs() {
+
+    document.getElementById("pid").value = "";
+    document.getElementById("arrival").value = "";
+    document.getElementById("burst").value = "";
+    document.getElementById("priority").value = "";
+
+}
+
+
+// ------------------------------------------
+// DISPLAY PROCESSES
+// ------------------------------------------
+
+function renderProcesses() {
+
+    const body = document.getElementById("processBody");
+
+    body.innerHTML = "";
+
+
+    if (processes.length === 0) {
+
+        body.innerHTML = `
+            <tr>
+                <td colspan="5" class="empty">
+                    No processes added.
+                </td>
+            </tr>
+        `;
+
+        return;
+    }
+
+
+    processes.forEach((p, index) => {
+
+        body.innerHTML += `
+
+            <tr>
+
+                <td>${p.pid}</td>
+
+                <td>${p.arrival}</td>
+
+                <td>${p.burst}</td>
+
+                <td>${p.priority}</td>
+
+                <td>
+                    <button
+                        class="delete-btn"
+                        onclick="deleteProcess(${index})">
+                        Delete
+                    </button>
+                </td>
+
+            </tr>
+
+        `;
+
+    });
+
+}
+
+
+// ------------------------------------------
+// DELETE PROCESS
+// ------------------------------------------
+
+function deleteProcess(index) {
+
+    processes.splice(index, 1);
+
+    processes.forEach((p, i) => {
+        p.order = i;
+    });
+
+    renderProcesses();
+
+}
+
+
+// ------------------------------------------
+// CLEAR ALL
+// ------------------------------------------
+
+function clearProcesses() {
+
+    processes = [];
+
+    renderProcesses();
+
+    document.getElementById("resultBody").innerHTML = "";
+
+    document.getElementById("ganttContainer").innerHTML = `
+        <div class="empty">
+            Run a simulation to display the Gantt chart.
+        </div>
+    `;
+
+    document.getElementById("avgWT").textContent = "-";
+    document.getElementById("avgTAT").textContent = "-";
+    document.getElementById("avgRT").textContent = "-";
+
+}
+
+
+// ------------------------------------------
+// LOAD DEMO
+// ------------------------------------------
+
+function loadDemo() {
+
+    processes = [
+
+        {
+            pid: "P1",
+            arrival: 0,
+            burst: 8,
+            priority: 2,
+            order: 0
+        },
+
+        {
+            pid: "P2",
+            arrival: 1,
+            burst: 4,
+            priority: 3,
+            order: 1
+        },
+
+        {
+            pid: "P3",
+            arrival: 2,
+            burst: 9,
+            priority: 1,
+            order: 2
+        },
+
+        {
+            pid: "P4",
+            arrival: 3,
+            burst: 5,
+            priority: 4,
+            order: 3
+        },
+
+        {
+            pid: "P5",
+            arrival: 30,
+            burst: 3,
+            priority: 1,
+            order: 4
+        }
+
+    ];
+
+    renderProcesses();
+
+}
+
+
+// ------------------------------------------
+// FCFS
+// ------------------------------------------
+
+function fcfs(data) {
+
+    const list = [...data].sort(
+        (a, b) =>
+            a.arrival - b.arrival ||
+            a.order - b.order
+    );
+
+
+    let time = 0;
+
+    let gantt = [];
+
+    let results = [];
+
+
+    for (const p of list) {
+
+        if (time < p.arrival) {
+
+            gantt.push({
+                pid: "IDLE",
+                start: time,
+                end: p.arrival
+            });
+
+            time = p.arrival;
+        }
+
+
+        const start = time;
+
+        const end = time + p.burst;
+
+
+        gantt.push({
+            pid: p.pid,
+            start: start,
+            end: end
+        });
+
+
+        time = end;
+
+
+        results.push({
+
+            ...p,
+
+            start: start,
+
+            completion: end,
+
+            turnaround: end - p.arrival,
+
+            waiting: start - p.arrival,
+
+            response: start - p.arrival
+
+        });
+
+    }
+
+
+    return {
+
+        gantt,
+
+        results
+
+    };
+
+}
+
+
+// ------------------------------------------
+// SJF
+// ------------------------------------------
+
+function sjf(data) {
+
+    let remaining = data.map(p => ({ ...p }));
+
+    let time = 0;
+
+    let gantt = [];
+
+    let results = [];
+
+
+    while (remaining.length > 0) {
+
+        let available = remaining.filter(
+            p => p.arrival <= time
+        );
+
+
+        if (available.length === 0) {
+
+            const next = remaining.reduce(
+                (a, b) =>
+                    a.arrival < b.arrival ? a : b
+            );
+
+
+            gantt.push({
+                pid: "IDLE",
+                start: time,
+                end: next.arrival
+            });
+
+
+            time = next.arrival;
+
+            continue;
+        }
+
+
+        available.sort(
+            (a, b) =>
+                a.burst - b.burst ||
+                a.arrival - b.arrival ||
+                a.order - b.order
+        );
+
+
+        const p = available[0];
+
+
+        remaining = remaining.filter(
+            x => x.pid !== p.pid
+        );
+
+
+        const start = time;
+
+        const end = time + p.burst;
+
+
+        gantt.push({
+            pid: p.pid,
+            start: start,
+            end: end
+        });
+
+
+        time = end;
+
+
+        results.push({
+
+            ...p,
+
+            start: start,
+
+            completion: end,
+
+            turnaround: end - p.arrival,
+
+            waiting: start - p.arrival,
+
+            response: start - p.arrival
+
+        });
+
+    }
+
+
+    return {
+
+        gantt,
+
+        results
+
+    };
+
+}
+
+
+// ------------------------------------------
+// ROUND ROBIN
+// ------------------------------------------
+
+function roundRobin(data, quantum) {
+
+    let list = data.map(p => ({
+        ...p,
+        remaining: p.burst
+    }));
+
+
+    list.sort(
+        (a, b) =>
+            a.arrival - b.arrival ||
+            a.order - b.order
+    );
+
+
+    let queue = [];
+
+    let time = 0;
+
+    let index = 0;
+
+    let gantt = [];
+
+    let firstStart = {};
+
+    let completion = {};
+
+    let response = {};
+
+
+    while (
+        index < list.length ||
+        queue.length > 0
+    ) {
+
+
+        while (
+            index < list.length &&
+            list[index].arrival <= time
+        ) {
+
+            queue.push(list[index]);
+
+            index++;
+
+        }
+
+
+        if (queue.length === 0) {
+
+            const next = list[index];
+
+            gantt.push({
+                pid: "IDLE",
+                start: time,
+                end: next.arrival
+            });
+
+            time = next.arrival;
+
+            continue;
+        }
+
+
+        const p = queue.shift();
+
+
+        if (firstStart[p.pid] === undefined) {
+
+            firstStart[p.pid] = time;
+
+            response[p.pid] =
+                time - p.arrival;
+
+        }
+
+
+        const runTime =
+            Math.min(quantum, p.remaining);
+
+
+        const start = time;
+
+        const end = time + runTime;
+
+
+        gantt.push({
+
+            pid: p.pid,
+
+            start: start,
+
+            end: end
+
+        });
+
+
+        time = end;
+
+        p.remaining -= runTime;
+
+
+        while (
+            index < list.length &&
+            list[index].arrival <= time
+        ) {
+
+            queue.push(list[index]);
+
+            index++;
+
+        }
+
+
+        if (p.remaining > 0) {
+
+            queue.push(p);
+
+        } else {
+
+            completion[p.pid] = time;
+
+        }
+
+    }
+
+
+    const results = data.map(p => {
+
+        const ct = completion[p.pid];
+
+        const tat = ct - p.arrival;
+
+        const wt = tat - p.burst;
+
+        return {
+
+            ...p,
+
+            start: firstStart[p.pid],
+
+            completion: ct,
+
+            turnaround: tat,
+
+            waiting: wt,
+
+            response: response[p.pid]
+
+        };
+
+    });
+
+
+    return {
+
+        gantt,
+
+        results
+
+    };
+
+}
+
+
+// ------------------------------------------
+// PRIORITY
+// ------------------------------------------
+
+function priorityScheduling(data) {
+
+    let remaining = data.map(p => ({ ...p }));
+
+    let time = 0;
+
+    let gantt = [];
+
+    let results = [];
+
+
+    while (remaining.length > 0) {
+
+        let available = remaining.filter(
+            p => p.arrival <= time
+        );
+
+
+        if (available.length === 0) {
+
+            const next = remaining.reduce(
+                (a, b) =>
+                    a.arrival < b.arrival ? a : b
+            );
+
+
+            gantt.push({
+
+                pid: "IDLE",
+
+                start: time,
+
+                end: next.arrival
+
+            });
+
+
+            time = next.arrival;
+
+            continue;
+
+        }
+
+
+        available.sort(
+
+            (a, b) =>
+
+                a.priority - b.priority ||
+
+                a.arrival - b.arrival ||
+
+                a.order - b.order
+
+        );
+
+
+        const p = available[0];
+
+
+        remaining = remaining.filter(
+            x => x.pid !== p.pid
+        );
+
+
+        const start = time;
+
+        const end = time + p.burst;
+
+
+        gantt.push({
+
+            pid: p.pid,
+
+            start: start,
+
+            end: end
+
+        });
+
+
+        time = end;
+
+
+        results.push({
+
+            ...p,
+
+            start: start,
+
+            completion: end,
+
+            turnaround: end - p.arrival,
+
+            waiting: start - p.arrival,
+
+            response: start - p.arrival
+
+        });
+
+    }
+
+
+    return {
+
+        gantt,
+
+        results
+
+    };
+
+}
+
+
+// ------------------------------------------
+// CALCULATE AVERAGES
+// ------------------------------------------
+
+function calculateAverages(results) {
+
+    const n = results.length;
+
+
+    if (!n) {
+
+        return {
+
+            wt: 0,
+
+            tat: 0,
+
+            rt: 0
+
+        };
+
+    }
+
+
+    return {
+
+        wt:
+            results.reduce(
+                (sum, p) => sum + p.waiting,
+                0
+            ) / n,
+
+        tat:
+            results.reduce(
+                (sum, p) => sum + p.turnaround,
+                0
+            ) / n,
+
+        rt:
+            results.reduce(
+                (sum, p) => sum + p.response,
+                0
+            ) / n
+
+    };
+
+}
+
+
+// ------------------------------------------
+// RUN ONE ALGORITHM
+// ------------------------------------------
+
+function runAlgorithm(name) {
+
+    if (name === "FCFS") {
+
+        return fcfs(processes);
+
+    }
+
+    if (name === "SJF") {
+
+        return sjf(processes);
+
+    }
+
+    if (name === "RR") {
+
+        const quantum =
+            Number(
+                document.getElementById("quantum").value
+            );
+
+        return roundRobin(
+            processes,
+            quantum
+        );
+
+    }
+
+    if (name === "PRIORITY") {
+
+        return priorityScheduling(processes);
+
+    }
+
+}
+
+
+// ------------------------------------------
+// RUN SIMULATION
+// ------------------------------------------
+
+function runSimulation() {
+
+    if (processes.length === 0) {
+
+        alert("Please add at least one process.");
+
+        return;
+
+    }
+
+
+    const algorithm =
+        document.getElementById("algorithm").value;
+
+
+    if (algorithm === "ALL") {
+
+        runAllAlgorithms();
+
+        return;
+
+    }
+
+
+    const result =
+        runAlgorithm(algorithm);
+
+
+    lastResults = result.results;
+
+
+    displayGantt(result.gantt);
+
+    displayResults(result.results);
+
+    displayComparisonSingle(
+        algorithm,
+        calculateAverages(result.results)
+    );
+
+
+    document.getElementById("status").textContent =
+        algorithm +
+        " simulation completed successfully.";
+
+}
+
+
+// ------------------------------------------
+// RUN ALL ALGORITHMS
+// ------------------------------------------
+
+function runAllAlgorithms() {
+
+    const algorithms = [
+
+        "FCFS",
+
+        "SJF",
+
+        "RR",
+
+        "PRIORITY"
+
+    ];
+
+
+    const results = {};
+
+
+    algorithms.forEach(name => {
+
+        const result =
+            runAlgorithm(name);
+
+        results[name] = result;
+
+    });
+
+
+    const selected =
+        document.getElementById("algorithm").value;
+
+
+    // Show FCFS Gantt by default
+
+    displayGantt(
+        results.FCFS.gantt
+    );
+
+
+    displayResults(
+        results.FCFS.results
+    );
+
+
+    displayComparison(
+        results
+    );
+
+
+    document.getElementById("status").textContent =
+        "All algorithms simulated successfully. FCFS results are shown above; use the comparison table to compare all algorithms.";
+
+}
+
+
+// ------------------------------------------
+// DISPLAY GANTT CHART
+// ------------------------------------------
+
+function displayGantt(gantt) {
+
+    const container =
+        document.getElementById("ganttContainer");
+
+
+    if (!gantt.length) {
+
+        container.innerHTML = `
+            <div class="empty">
+                No Gantt data available.
+            </div>
+        `;
+
+        return;
+
+    }
+
+
+    const totalTime =
+        gantt[gantt.length - 1].end;
+
+
+    let chart = `
+        <div class="gantt">
+    `;
+
+
+    gantt.forEach(block => {
+
+        const duration =
+            block.end - block.start;
+
+
+        const width =
+            Math.max(
+                duration / totalTime * 100,
+                4
+            );
+
+
+        chart += `
+
+            <div
+                class="gantt-block ${block.pid === "IDLE" ? "idle" : ""}"
+                style="width:${width}%"
+                title="${block.pid}: ${block.start} - ${block.end}"
+            >
+
+                ${block.pid}
+
+            </div>
+
+        `;
+
+    });
+
+
+    chart += `
+        </div>
+    `;
+
+
+    chart += `
+        <div class="time-labels">
+    `;
+
+
+    gantt.forEach((block, index) => {
+
+        const duration =
+            block.end - block.start;
+
+
+        const width =
+            Math.max(
+                duration / totalTime * 100,
+                4
+            );
+
+
+        chart += `
+
+            <div
+                class="time-label"
+                style="width:${width}%"
+            >
+
+                ${block.start}
+
+            </div>
+
+        `;
+
+
+        if (
+            index === gantt.length - 1
+        ) {
+
+            chart += `
+                <div class="time-label">
+                    ${block.end}
+                </div>
+            `;
+
+        }
+
+    });
+
+
+    chart += `
+        </div>
+    `;
+
+
+    container.innerHTML = chart;
+
+}
+
+
+// ------------------------------------------
+// DISPLAY PROCESS RESULTS
+// ------------------------------------------
+
+function displayResults(results) {
+
+    const body =
+        document.getElementById("resultBody");
+
+
+    body.innerHTML = "";
+
+
+    const ordered =
+        [...results].sort(
+            (a, b) =>
+                a.order - b.order
+        );
+
+
+    ordered.forEach(p => {
+
+        body.innerHTML += `
+
+            <tr>
+
+                <td>
+                    <strong>${p.pid}</strong>
+                </td>
+
+                <td>${p.arrival}</td>
+
+                <td>${p.burst}</td>
+
+                <td>${p.priority}</td>
+
+                <td>${p.completion}</td>
+
+                <td>${p.turnaround}</td>
+
+                <td>${p.waiting}</td>
+
+                <td>${p.response}</td>
+
+            </tr>
+
+        `;
+
+    });
+
+
+    const avg =
+        calculateAverages(results);
+
+
+    document.getElementById("avgWT").textContent =
+        avg.wt.toFixed(2);
+
+
+    document.getElementById("avgTAT").textContent =
+        avg.tat.toFixed(2);
+
+
+    document.getElementById("avgRT").textContent =
+        avg.rt.toFixed(2);
+
+}
+
+
+// ------------------------------------------
+// DISPLAY SINGLE COMPARISON
+// ------------------------------------------
+
+function displayComparisonSingle(
+    algorithm,
+    avg
+) {
+
+    const body =
+        document.getElementById("comparisonBody");
+
+
+    body.innerHTML = `
+
+        <tr>
+
+            <td class="algorithm-name">
+                ${algorithm}
+            </td>
+
+            <td>${avg.wt.toFixed(2)}</td>
+
+            <td>${avg.tat.toFixed(2)}</td>
+
+            <td>${avg.rt.toFixed(2)}</td>
+
+        </tr>
+
+    `;
+
+}
+
+
+// ------------------------------------------
+// DISPLAY ALL COMPARISON
+// ------------------------------------------
+
+function displayComparison(allResults) {
+
+    const body =
+        document.getElementById("comparisonBody");
+
+
+    body.innerHTML = "";
+
+
+    const averages = {};
+
+
+    for (const name in allResults) {
+
+        averages[name] =
+            calculateAverages(
+                allResults[name].results
+            );
+
+    }
+
+
+    const bestWT =
+        Math.min(
+            ...Object.values(averages)
+                .map(x => x.wt)
+        );
+
+
+    const bestTAT =
+        Math.min(
+            ...Object.values(averages)
+                .map(x => x.tat)
+        );
+
+
+    const bestRT =
+        Math.min(
+            ...Object.values(averages)
+                .map(x => x.rt)
+        );
+
+
+    for (const name in averages) {
+
+        const avg =
+            averages[name];
+
+
+        body.innerHTML += `
+
+            <tr>
+
+                <td class="algorithm-name">
+                    ${name}
+                </td>
+
+                <td class="${avg.wt === bestWT ? "best" : ""}">
+                    ${avg.wt.toFixed(2)}
+                    ${avg.wt === bestWT ? " ★" : ""}
+                </td>
+
+                <td class="${avg.tat === bestTAT ? "best" : ""}">
+                    ${avg.tat.toFixed(2)}
+                    ${avg.tat === bestTAT ? " ★" : ""}
+                </td>
+
+                <td class="${avg.rt === bestRT ? "best" : ""}">
+                    ${avg.rt.toFixed(2)}
+                    ${avg.rt === bestRT ? " ★" : ""}
+                </td>
+
+            </tr>
+
+        `;
+
+    }
+
+}
+
+
+// ------------------------------------------
+// QUANTUM VISIBILITY
+// ------------------------------------------
+
+function toggleQuantum() {
+
+    const algorithm =
+        document.getElementById("algorithm").value;
+
+
+    const group =
+        document.getElementById("quantumGroup");
+
+
+    if (algorithm === "RR") {
+
+        group.style.display = "flex";
+
+    } else {
+
+        group.style.display = "flex";
+
+    }
+
+}
+
+
+// ------------------------------------------
+// INITIAL PAGE
+// ------------------------------------------
+
+loadDemo();
+
+toggleQuantum();
+
+</script>
+
+</body>
+</html>
