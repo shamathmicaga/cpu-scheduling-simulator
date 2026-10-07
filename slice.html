@@ -1,0 +1,433 @@
+#!/usr/bin/env python3
+"""
+CPU Scheduling Algorithm Simulator
+==================================
+Simulates FCFS, SJF, Round Robin and Priority scheduling, prints a text Gantt
+chart for each, plots Gantt charts with matplotlib, and compares the average
+waiting / turnaround / response times in a table.
+
+Usage
+-----
+  python cpu_scheduler.py                    # run built-in demo data
+  python cpu_scheduler.py -i                 # type processes in interactively
+  python cpu_scheduler.py -f procs.csv       # load from CSV (pid,arrival,burst,priority)
+  python cpu_scheduler.py -q 3               # Round Robin time quantum = 3
+  python cpu_scheduler.py --preemptive       # SJF -> SRTF, Priority -> preemptive
+  python cpu_scheduler.py --save out.png     # also save the figure
+  python cpu_scheduler.py --no-plot          # text output only
+
+Conventions
+-----------
+  * Times are integers (time units).
+  * Lower priority number = higher priority (Unix-style).
+  * Ties are broken by arrival time, then by input order.
+"""
+
+import argparse
+import csv
+import sys
+from collections import deque
+from dataclasses import dataclass
+
+IDLE = "IDLE"
+
+
+# --------------------------------------------------------------------------- #
+# Data model
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class Process:
+    pid: str
+    arrival: int
+    burst: int
+    priority: int = 0
+    order: int = 0  # input order, used for tie-breaking
+
+
+@dataclass
+class Result:
+    name: str
+    timeline: list   # [(pid | IDLE, start, end), ...]
+    stats: dict      # pid -> dict(ct, tat, wt, rt)
+    avg_wt: float
+    avg_tat: float
+    avg_rt: float
+
+
+# --------------------------------------------------------------------------- #
+# Helpers
+# --------------------------------------------------------------------------- #
+def add_segment(timeline, pid, start, end):
+    """Append a segment, merging with the previous one if it is the same pid."""
+    if end <= start:
+        return
+    if timeline and timeline[-1][0] == pid and timeline[-1][2] == start:
+        timeline[-1] = (pid, timeline[-1][1], end)
+    else:
+        timeline.append((pid, start, end))
+
+
+def compute_metrics(name, procs, timeline):
+    """Derive CT / TAT / WT / RT for every process from the Gantt timeline."""
+    first_run, completion = {}, {}
+    for pid, s, e in timeline:
+        if pid == IDLE:
+            continue
+        first_run.setdefault(pid, s)
+        completion[pid] = e
+    stats = {}
+    for p in procs:
+        ct = completion[p.pid]
+        tat = ct - p.arrival
+        stats[p.pid] = {
+            "ct": ct,
+            "tat": tat,
+            "wt": tat - p.burst,
+            "rt": first_run[p.pid] - p.arrival,
+        }
+    n = len(procs)
+    return Result(
+        name, timeline, stats,
+        sum(s["wt"] for s in stats.values()) / n,
+        sum(s["tat"] for s in stats.values()) / n,
+        sum(s["rt"] for s in stats.values()) / n,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Scheduling algorithms
+# --------------------------------------------------------------------------- #
+def fcfs(procs):
+    t, tl = 0, []
+    for p in sorted(procs, key=lambda p: (p.arrival, p.order)):
+        if t < p.arrival:
+            add_segment(tl, IDLE, t, p.arrival)
+            t = p.arrival
+        add_segment(tl, p.pid, t, t + p.burst)
+        t += p.burst
+    return compute_metrics("FCFS", procs, tl)
+
+
+def _priority_scheduler(procs, key, preemptive):
+    """Generic engine for SJF/SRTF and Priority (non-preemptive & preemptive)."""
+    remaining = {p.pid: p.burst for p in procs}
+    by_pid = {p.pid: p for p in procs}
+    t, done, tl = 0, 0, []
+    n = len(procs)
+
+    while done < n:
+        ready = [p for p in procs if p.arrival <= t and remaining[p.pid] > 0]
+        if not ready:
+            nxt = min(p.arrival for p in procs if remaining[p.pid] > 0)
+            add_segment(tl, IDLE, t, nxt)
+            t = nxt
+            continue
+
+        chosen = min(ready, key=lambda p: key(p, remaining[p.pid]))
+
+        if preemptive:
+            # run until it finishes OR the next arrival (a possible preemption)
+            future = [p.arrival for p in procs
+                      if p.arrival > t and remaining[p.pid] > 0]
+            run = remaining[chosen.pid]
+            if future:
+                run = min(run, min(future) - t)
+        else:
+            run = remaining[chosen.pid]
+
+        add_segment(tl, chosen.pid, t, t + run)
+        t += run
+        remaining[chosen.pid] -= run
+        if remaining[chosen.pid] == 0:
+            done += 1
+    return tl
+
+
+def sjf(procs, preemptive=False):
+    tl = _priority_scheduler(
+        procs, key=lambda p, rem: ((rem if preemptive else p.burst), p.arrival, p.order),
+        preemptive=preemptive)
+    return compute_metrics("SRTF" if preemptive else "SJF", procs, tl)
+
+
+def priority(procs, preemptive=False):
+    tl = _priority_scheduler(
+        procs, key=lambda p, rem: (p.priority, p.arrival, p.order),
+        preemptive=preemptive)
+    return compute_metrics("Priority" + (" (P)" if preemptive else ""), procs, tl)
+
+
+def round_robin(procs, quantum):
+    procs_sorted = sorted(procs, key=lambda p: (p.arrival, p.order))
+    remaining = {p.pid: p.burst for p in procs}
+    queue, tl = deque(), []
+    t, i, done, n = 0, 0, 0, len(procs)
+
+    def admit(upto):
+        nonlocal i
+        while i < n and procs_sorted[i].arrival <= upto:
+            queue.append(procs_sorted[i])
+            i += 1
+
+    admit(t)
+    while done < n:
+        if not queue:                      # CPU idle until next arrival
+            nxt = procs_sorted[i].arrival
+            add_segment(tl, IDLE, t, nxt)
+            t = nxt
+            admit(t)
+            continue
+        p = queue.popleft()
+        run = min(quantum, remaining[p.pid])
+        add_segment(tl, p.pid, t, t + run)
+        t += run
+        remaining[p.pid] -= run
+        admit(t)                           # newcomers go ahead of the preempted proc
+        if remaining[p.pid] > 0:
+            queue.append(p)
+        else:
+            done += 1
+    return compute_metrics(f"Round Robin (q={quantum})", procs, tl)
+
+
+# --------------------------------------------------------------------------- #
+# Text output
+# --------------------------------------------------------------------------- #
+def text_gantt(result, max_width=100):
+    """Render a one-line ASCII Gantt chart with a time axis underneath."""
+    cells = []
+    for pid, s, e in result.timeline:
+        label = pid if pid != IDLE else "idle"
+        width = max(len(label) + 2, (e - s) * 2)
+        cells.append((label, s, e, width))
+
+    # wrap long charts onto several rows
+    rows, row, row_w = [], [], 0
+    for c in cells:
+        if row and row_w + c[3] + 1 > max_width:
+            rows.append(row)
+            row, row_w = [], 0
+        row.append(c)
+        row_w += c[3] + 1
+    rows.append(row)
+
+    lines = []
+    for row in rows:
+        bar, axis = "|", ""
+        for label, s, e, w in row:
+            bar += label.center(w) + "|"
+            axis += str(s).ljust(w + 1)
+        axis += str(row[-1][2])
+        lines.append("  " + bar)
+        lines.append("  " + axis)
+    return "\n".join(lines)
+
+
+def print_process_table(procs):
+    print("\nINPUT PROCESSES")
+    print(f"  {'PID':<6}{'Arrival':>8}{'Burst':>8}{'Priority':>10}")
+    print("  " + "-" * 32)
+    for p in procs:
+        print(f"  {p.pid:<6}{p.arrival:>8}{p.burst:>8}{p.priority:>10}")
+
+
+def print_result(result, procs):
+    print(f"\n{'=' * 64}\n {result.name}\n{'=' * 64}")
+    print("Gantt chart:")
+    print(text_gantt(result))
+    print(f"\n  {'PID':<6}{'CT':>6}{'TAT':>6}{'WT':>6}{'RT':>6}")
+    print("  " + "-" * 30)
+    for p in procs:
+        s = result.stats[p.pid]
+        print(f"  {p.pid:<6}{s['ct']:>6}{s['tat']:>6}{s['wt']:>6}{s['rt']:>6}")
+    print(f"\n  Average waiting time    : {result.avg_wt:.2f}")
+    print(f"  Average turnaround time : {result.avg_tat:.2f}")
+    print(f"  Average response time   : {result.avg_rt:.2f}")
+
+
+def print_comparison(results):
+    best_wt = min(r.avg_wt for r in results)
+    best_tat = min(r.avg_tat for r in results)
+    best_rt = min(r.avg_rt for r in results)
+    w = max(len(r.name) for r in results) + 2
+    print(f"\n{'=' * 64}\n COMPARISON  (* = best in column)\n{'=' * 64}")
+    print(f"  {'Algorithm':<{w}}{'Avg WT':>10}{'Avg TAT':>10}{'Avg RT':>10}")
+    print("  " + "-" * (w + 30))
+    for r in results:
+        mark = lambda v, b: " *" if abs(v - b) < 1e-9 else "  "
+        print(f"  {r.name:<{w}}"
+              f"{r.avg_wt:>8.2f}{mark(r.avg_wt, best_wt)}"
+              f"{r.avg_tat:>8.2f}{mark(r.avg_tat, best_tat)}"
+              f"{r.avg_rt:>8.2f}{mark(r.avg_rt, best_rt)}")
+
+
+# --------------------------------------------------------------------------- #
+# Plotting
+# --------------------------------------------------------------------------- #
+def plot_all(results, procs, save_path=None, show=True):
+    import matplotlib
+    if not show:
+        matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    pids = [p.pid for p in procs]
+    cmap = plt.get_cmap("tab10")
+    colors = {pid: cmap(i % 10) for i, pid in enumerate(pids)}
+    colors[IDLE] = "#d9d9d9"
+
+    fig = plt.figure(figsize=(13, 3 * len(results) + 3.6))
+    gs = fig.add_gridspec(len(results) + 1, 2,
+                          height_ratios=[1] * len(results) + [1.4])
+
+    horizon = max(r.timeline[-1][2] for r in results)
+    for idx, r in enumerate(results):
+        ax = fig.add_subplot(gs[idx, :])
+        for pid, s, e in r.timeline:
+            ax.barh(0, e - s, left=s, height=0.55, color=colors[pid],
+                    edgecolor="black", linewidth=0.8,
+                    hatch="//" if pid == IDLE else None)
+            ax.text((s + e) / 2, 0, "idle" if pid == IDLE else pid,
+                    ha="center", va="center", fontsize=9, fontweight="bold",
+                    color="black" if pid == IDLE else "white")
+        bounds = sorted({s for _, s, _ in r.timeline} | {r.timeline[-1][2]})
+        ax.set_xticks(bounds)
+        ax.set_xlim(0, horizon)
+        ax.set_ylim(-0.5, 0.5)
+        ax.set_yticks([])
+        ax.grid(axis="x", linestyle=":", alpha=0.5)
+        ax.set_title(f"{r.name}   |   avg WT = {r.avg_wt:.2f}, "
+                     f"avg TAT = {r.avg_tat:.2f}", loc="left", fontsize=11)
+        for sp in ("top", "right", "left"):
+            ax.spines[sp].set_visible(False)
+
+    # grouped bar charts comparing the averages
+    names = [r.name.replace(" (", "\n(") for r in results]
+    ax1 = fig.add_subplot(gs[-1, 0])
+    ax2 = fig.add_subplot(gs[-1, 1])
+    x = range(len(results))
+    wd = 0.38
+    ax1.bar([i - wd / 2 for i in x], [r.avg_wt for r in results], wd,
+            label="Avg waiting", color="#4C72B0")
+    ax1.bar([i + wd / 2 for i in x], [r.avg_tat for r in results], wd,
+            label="Avg turnaround", color="#DD8452")
+    ax1.set_xticks(list(x))
+    ax1.set_xticklabels(names, fontsize=8)
+    ax1.set_title("Average waiting vs. turnaround time")
+    ax1.legend(fontsize=8)
+    ax1.set_ylabel("time units")
+
+    ax2.bar(list(x), [r.avg_rt for r in results], 0.5, color="#55A868")
+    ax2.set_xticks(list(x))
+    ax2.set_xticklabels(names, fontsize=8)
+    ax2.set_title("Average response time")
+
+    fig.suptitle("CPU Scheduling Simulator", fontsize=14, fontweight="bold")
+    fig.tight_layout(rect=(0, 0, 1, 0.97))
+    if save_path:
+        fig.savefig(save_path, dpi=150)
+        print(f"\nFigure saved to {save_path}")
+    if show:
+        plt.show()
+
+
+# --------------------------------------------------------------------------- #
+# Input
+# --------------------------------------------------------------------------- #
+DEMO = [
+    ("P1", 0, 8, 2),
+    ("P2", 1, 4, 3),
+    ("P3", 2, 9, 1),
+    ("P4", 3, 5, 4),
+    ("P5", 30, 3, 1),   # arrives after a CPU idle gap
+]
+
+
+def build(rows):
+    procs, seen = [], set()
+    for i, (pid, a, b, pr) in enumerate(rows):
+        if pid in seen:
+            raise ValueError(f"duplicate PID '{pid}'")
+        if a < 0 or b <= 0:
+            raise ValueError(f"{pid}: arrival must be >= 0 and burst > 0")
+        seen.add(pid)
+        procs.append(Process(pid, int(a), int(b), int(pr), i))
+    if not procs:
+        raise ValueError("no processes given")
+    return procs
+
+
+def read_csv(path):
+    rows = []
+    with open(path, newline="") as f:
+        for rec in csv.reader(f):
+            if not rec or rec[0].strip().startswith("#"):
+                continue
+            if rec[0].strip().lower() in ("pid", "process", "name"):
+                continue                                  # header row
+            pid, a, b, *rest = [c.strip() for c in rec]
+            rows.append((pid, int(a), int(b), int(rest[0]) if rest else 0))
+    return build(rows)
+
+
+def read_interactive():
+    n = int(input("Number of processes: "))
+    rows = []
+    print("Enter: arrival burst priority   (lower priority number = higher priority)")
+    for i in range(1, n + 1):
+        a, b, pr = input(f"  P{i}: ").split()
+        rows.append((f"P{i}", int(a), int(b), int(pr)))
+    return build(rows)
+
+
+# --------------------------------------------------------------------------- #
+# Main
+# --------------------------------------------------------------------------- #
+def main():
+    ap = argparse.ArgumentParser(description="CPU scheduling simulator")
+    ap.add_argument("-f", "--file", help="CSV file: pid,arrival,burst,priority")
+    ap.add_argument("-i", "--interactive", action="store_true",
+                    help="enter processes at the prompt")
+    ap.add_argument("-q", "--quantum", type=int, default=3,
+                    help="Round Robin time quantum (default 3)")
+    ap.add_argument("--preemptive", action="store_true",
+                    help="use preemptive SJF (SRTF) and preemptive Priority")
+    ap.add_argument("--no-plot", action="store_true", help="skip matplotlib")
+    ap.add_argument("--no-show", action="store_true",
+                    help="don't open a window (use with --save)")
+    ap.add_argument("--save", metavar="PNG", help="save the figure to a file")
+    args = ap.parse_args()
+
+    if args.quantum <= 0:
+        sys.exit("Quantum must be a positive integer.")
+    try:
+        if args.interactive:
+            procs = read_interactive()
+        elif args.file:
+            procs = read_csv(args.file)
+        else:
+            procs = build(DEMO)
+            print("(no input given - using built-in demo data)")
+    except (ValueError, OSError) as e:
+        sys.exit(f"Input error: {e}")
+
+    print_process_table(procs)
+
+    results = [
+        fcfs(procs),
+        sjf(procs, args.preemptive),
+        round_robin(procs, args.quantum),
+        priority(procs, args.preemptive),
+    ]
+    for r in results:
+        print_result(r, procs)
+    print_comparison(results)
+
+    if not args.no_plot:
+        try:
+            plot_all(results, procs, args.save, show=not args.no_show)
+        except ImportError:
+            print("\nmatplotlib not installed - run: pip install matplotlib")
+
+
+if __name__ == "__main__":
+    main()
